@@ -5,10 +5,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import csv
+import os
 
-# Setup Chrome with webdriver-manager
+# Setup Chrome driver
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")  # run without GUI
+options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 
@@ -17,32 +18,52 @@ driver = webdriver.Chrome(
     options=options
 )
 
-# Navigate to Glock Pistols page
-driver.get("https://eu.glock.com/en/Products/Pistols")
+# Ensure folder for failed pages exists
+os.makedirs("failed_pages", exist_ok=True)
 
-# Wait until the pistol blocks are loaded
-WebDriverWait(driver, 10).until(
-    EC.presence_of_all_elements_located((By.CLASS_NAME, "pistol-list-item__information"))
-)
+# Load URLs from CSV
+with open("glock_products.csv", newline="", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+    urls = [row["url"] for row in reader]
 
-# Extract product names and links
-items = driver.find_elements(By.CLASS_NAME, "pistol-list-item__information")
 results = []
 
-for item in items:
+for url in urls:
     try:
-        anchor = item.find_element(By.TAG_NAME, "a")
-        name = anchor.text.strip()
-        link = anchor.get_attribute("href")
-        results.append((name, link))
-    except Exception as e:
-        print("Skipping item due to error:", e)
+        driver.get(url)
 
-# Save to CSV
-with open("glock_products.csv", "w", newline="", encoding="utf-8") as f:
+        # Wait until the name is visible, not just present
+        WebDriverWait(driver, 20).until(
+            EC.visibility_of_element_located((By.CLASS_NAME, "player3d__gun-info__name"))
+        )
+
+        name_el = driver.find_elements(By.CLASS_NAME, "player3d__gun-info__name")
+        desc_el = driver.find_elements(By.CLASS_NAME, "pistoldetail__description")
+
+        name = name_el[0].text.strip() if name_el else ""
+        desc = desc_el[0].text.strip() if desc_el else ""
+
+        if name:
+            results.append((name, desc, url))
+            print(f"✅ Scraped: {name}")
+        else:
+            print(f"⚠️ Skipped (no name): {url}")
+
+
+    except Exception as e:
+        print(f"❌ Error at {url} — {e}")
+        # Save the HTML for investigation
+        debug_path = f"failed_pages/debug_{urls.index(url)}.html"
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print(f"🕵️ Saved failed HTML to: {debug_path}")
+        continue  # Keep going after failure
+
+# Save results to CSV
+with open("glock_products_full.csv", "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
-    writer.writerow(["name", "url"])
+    writer.writerow(["name", "description", "url"])
     writer.writerows(results)
 
-print(f"✅ Scraped {len(results)} products.")
 driver.quit()
+print(f"\n✅ Done. Scraped {len(results)} pistols.")
