@@ -16,31 +16,52 @@ driver.get(url)
 # Give the page some time to load
 time.sleep(5)
 
-# Print page source to debug
-print("Page title:", driver.title)
-print("Current URL:", driver.current_url)
-
 try:
-    # Use XPath to find all divs with that class
-    divs = driver.find_elements(By.XPATH, "//div[contains(@class, 'pistoldetail__technicaldata__info')]")
+    print("TECHNICAL SPECIFICATIONS:")
+    print("-----------------------")
     
-    print(f"Found {len(divs)} matching divs")
+    # Find all main container divs
+    containers = driver.find_elements(By.XPATH, "//div[contains(@class, 'pistoldetail__technicaldata__info') and not(contains(@class, '__title')) and not(contains(@class, '__description'))]")
     
-    # Extract text from each div
-    for i, div in enumerate(divs):
-        print(f"\nDiv {i+1}:")
-        print("Full HTML:", div.get_attribute('outerHTML'))
-        print("Text content:", div.text)
+    for container in containers:
+        # Extract the title (first child div)
+        title_div = container.find_element(By.XPATH, ".//div[contains(@class, '__title')]")
         
-        # Try to find any child elements within each div
-        children = div.find_elements(By.XPATH, "./*")
-        print(f"Found {len(children)} child elements")
-        
-        for j, child in enumerate(children):
-            print(f"  Child {j+1} text: {child.text}")
+        # Extract the description (second child div with paragraph)
+        try:
+            description_divs = container.find_elements(By.XPATH, ".//div[contains(@class, '__description')]//p")
+            descriptions = [p.get_attribute('textContent').strip() for p in description_divs]
+            description_text = " | ".join(descriptions)
             
+            # Get the raw text content using get_attribute to avoid empty text issues
+            title = title_div.get_attribute('textContent').strip()
+            
+            print(f"{title}: {description_text}")
+        except Exception as e:
+            print(f"Error with container: {e}")
+    
+    print("\nDIMENSIONS:")
+    print("-----------------------")
+    
+    # Find all table rows
+    rows = driver.find_elements(By.XPATH, "//tr[contains(@class, 'pistoldetail__dimensions__table__row')]")
+    
+    for row in rows:
+        try:
+            # Get all td elements in this row
+            cells = row.find_elements(By.TAG_NAME, "td")
+            
+            if len(cells) >= 2:
+                # Extract text from the first and second td elements
+                dimension_name = cells[0].get_attribute('textContent').strip()
+                dimension_value = cells[1].get_attribute('textContent').strip()
+                
+                print(f"{dimension_name}: {dimension_value}")
+        except Exception as e:
+            print(f"Error with table row: {e}")
+    
 except Exception as e:
-    print("Error:", e)
+    print(f"Error: {e}")
     
 finally:
     driver.quit()

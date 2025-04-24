@@ -6,13 +6,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import csv
 import os
+import time
 
 # Setup Chrome driver
 options = webdriver.ChromeOptions()
 options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
-
 driver = webdriver.Chrome(
     service=Service(ChromeDriverManager().install()),
     options=options
@@ -27,43 +27,78 @@ with open("glock_products.csv", newline="", encoding="utf-8") as f:
     urls = [row["url"] for row in reader]
 
 results = []
-
 for url in urls:
     try:
         driver.get(url)
-
-        # Wait until the name is visible, not just present
-        WebDriverWait(driver, 20).until(
-            EC.visibility_of_element_located((By.CLASS_NAME, "player3d__gun-info__name"))
-        )
-
+        time.sleep(5)  # Give page time to load
+        
+        # Get basic product info
         name_el = driver.find_elements(By.CLASS_NAME, "player3d__gun-info__name")
         desc_el = driver.find_elements(By.CLASS_NAME, "pistoldetail__description")
-
         name = name_el[0].text.strip() if name_el else ""
         desc = desc_el[0].text.strip() if desc_el else ""
-
+        
+        # Get technical specifications using the working method
+        specs = {}
+        containers = driver.find_elements(By.XPATH, "//div[contains(@class, 'pistoldetail__technicaldata__info') and not(contains(@class, '__title')) and not(contains(@class, '__description'))]")
+        
+        for container in containers:
+            try:
+                title_div = container.find_element(By.XPATH, ".//div[contains(@class, '__title')]")
+                title = title_div.get_attribute('textContent').strip()
+                
+                description_divs = container.find_elements(By.XPATH, ".//div[contains(@class, '__description')]//p")
+                descriptions = [p.get_attribute('textContent').strip() for p in description_divs]
+                description_text = " | ".join(descriptions)
+                
+                specs[title] = description_text
+            except Exception:
+                continue
+        
+        # Get dimensions from the table
+        rows = driver.find_elements(By.XPATH, "//tr[contains(@class, 'pistoldetail__dimensions__table__row')]")
+        
+        for row in rows:
+            try:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                
+                if len(cells) >= 2:
+                    dimension_name = cells[0].get_attribute('textContent').strip()
+                    dimension_value = cells[1].get_attribute('textContent').strip()
+                    
+                    # Add dimension to specs with "Dimension_" prefix to avoid conflicts
+                    specs["Dimension_" + dimension_name] = dimension_value
+            except Exception:
+                continue
+        
         if name:
-            results.append((name, desc, url))
-            print(f"✅ Scraped: {name}")
+            row_data = {"name": name, "description": desc, "url": url}
+            row_data.update(specs)  # Add all specs and dimensions to the row
+            results.append(row_data)
+            print(f"Scraped: {name}")
         else:
-            print(f"⚠️ Skipped (no name): {url}")
-
-
+            print(f"Skipped (no name): {url}")
+            
     except Exception as e:
-        print(f"❌ Error at {url} — {e}")
-        # Save the HTML for investigation
+        print(f"Error at {url} — {e}")
         debug_path = f"failed_pages/debug_{urls.index(url)}.html"
         with open(debug_path, "w", encoding="utf-8") as f:
             f.write(driver.page_source)
-        print(f"🕵️ Saved failed HTML to: {debug_path}")
-        continue  # Keep going after failure
+        print(f"Saved failed HTML to: {debug_path}")
+        continue
+
+# Determine all column names from the collected data
+all_columns = ["name", "description", "url"]
+for row in results:
+    for key in row.keys():
+        if key not in all_columns:
+            all_columns.append(key)
 
 # Save results to CSV
 with open("glock_products_full.csv", "w", newline="", encoding="utf-8") as f:
-    writer = csv.writer(f)
-    writer.writerow(["name", "description", "url"])
+    writer = csv.DictWriter(f, fieldnames=all_columns)
+    writer.writeheader()
     writer.writerows(results)
 
 driver.quit()
-print(f"\n✅ Done. Scraped {len(results)} pistols.")
+print(f"Done. Scraped {len(results)} pistols.")
