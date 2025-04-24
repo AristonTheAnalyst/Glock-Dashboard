@@ -55,7 +55,7 @@ for url in urls:
             except Exception:
                 continue
         
-        # Get dimensions from the table
+        # Get dimensions from the table, theres only one table and this is its xpath
         rows = driver.find_elements(By.XPATH, "//tr[contains(@class, 'pistoldetail__dimensions__table__row')]")
         
         for row in rows:
@@ -63,6 +63,7 @@ for url in urls:
                 cells = row.find_elements(By.TAG_NAME, "td")
                 
                 if len(cells) >= 2:
+                    # Essentially saying, get the first td elements
                     dimension_name = cells[0].get_attribute('textContent').strip()
                     dimension_value = cells[1].get_attribute('textContent').strip()
                     
