@@ -22,7 +22,7 @@ driver = webdriver.Chrome(
 os.makedirs("failed_pages", exist_ok=True)
 
 # Load URLs from CSV
-with open("glock_products.csv", newline="", encoding="utf-8") as f:
+with open("glock_product_urls.csv", newline="", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     urls = [row["url"] for row in reader]
 
@@ -40,6 +40,12 @@ for url in urls:
         
         # Get technical specifications using the working method
         specs = {}
+        weight_values = {
+            "Weight_without_magazine": "",
+            "Weight_with_empty_magazine": "",
+            "Weight_with_loaded_magazine": ""
+        }
+        
         containers = driver.find_elements(By.XPATH, "//div[contains(@class, 'pistoldetail__technicaldata__info') and not(contains(@class, '__title')) and not(contains(@class, '__description'))]")
         
         for container in containers:
@@ -51,9 +57,21 @@ for url in urls:
                 descriptions = [p.get_attribute('textContent').strip() for p in description_divs]
                 description_text = " | ".join(descriptions)
                 
-                specs[title] = description_text
+                # Handle weight values separately
+                if title == "Weight":
+                    if "without magazine" in description_text:
+                        weight_values["Weight_without_magazine"] = description_text
+                    elif "with empty magazine" in description_text:
+                        weight_values["Weight_with_empty_magazine"] = description_text
+                    elif "with loaded magazine" in description_text:
+                        weight_values["Weight_with_loaded_magazine"] = description_text
+                else:
+                    specs[title] = description_text
             except Exception:
                 continue
+        
+        # Add all weight values to specs
+        specs.update(weight_values)
         
         # Get dimensions from the table, theres only one table and this is its xpath
         rows = driver.find_elements(By.XPATH, "//tr[contains(@class, 'pistoldetail__dimensions__table__row')]")
@@ -63,7 +81,7 @@ for url in urls:
                 cells = row.find_elements(By.TAG_NAME, "td")
                 
                 if len(cells) >= 2:
-                    # Essentially saying, get the first td elements
+                    # Essentially saying, get the first td elements, strip them of their text
                     dimension_name = cells[0].get_attribute('textContent').strip()
                     dimension_value = cells[1].get_attribute('textContent').strip()
                     
@@ -96,7 +114,7 @@ for row in results:
             all_columns.append(key)
 
 # Save results to CSV
-with open("glock_products_full.csv", "w", newline="", encoding="utf-8") as f:
+with open("glock_dataset.csv", "w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=all_columns)
     writer.writeheader()
     writer.writerows(results)
